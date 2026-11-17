@@ -198,7 +198,8 @@ document.addEventListener('keydown',e=>{
  if(route==='cards'){if(k===' '){e.preventDefault();$('#fc').classList.toggle('flip')}if(k==='arrowright')$('#cn').click();if(k==='arrowleft')$('#cp').click();return}
  const s=byKey(route);if(s){const i=SECS.indexOf(s);if(k==='arrowright'&&SECS[i+1])go(SECS[i+1].key);if(k==='arrowleft'&&SECS[i-1])go(SECS[i-1].key);if(k==='m')$('#bDone').click();if(k==='s')$('#bStar').click()}
 });
-function fillImgs(){$$('#view img[data-img]').forEach(i=>{if(!i.src||i.src===location.href)i.src=DATA.imgs[i.dataset.img]||''})}
+const LZ={};function lazyImg(h){if(LZ[h])return LZ[h];return LZ[h]=fetch('i/'+h+'.bin').then(r=>{if(!r.ok)throw 0;return r.arrayBuffer()}).then(b=>crypto.subtle.decrypt({name:'AES-GCM',iv:new Uint8Array(b,0,12)},window.__kbkey,new Uint8Array(b,12))).then(p=>URL.createObjectURL(new Blob([p],{type:'image/jpeg'}))).catch(e=>{delete LZ[h];throw e})}
+function fillImgs(){$$('#view img[data-img]').forEach(i=>{if(i.dataset.ld)return;const v=DATA.imgs[i.dataset.img]||'';if(v[0]==='@'){i.dataset.ld=1;i.alt='截图加载中…';lazyImg(v.slice(1)).then(u=>{i.src=u},()=>{i.alt='截图需联网加载';delete i.dataset.ld})}else if(!i.src||i.src===location.href){i.src=v}})}
 new MutationObserver(fillImgs).observe(document.getElementById('view'),{childList:true,subtree:true});
 document.addEventListener('click',e=>{const i=e.target.closest('.doc details.orig img');if(i){$('#zimg').src=i.src;$('#zoom').style.display='block'}else if(e.target.closest('#zoom'))$('#zoom').style.display='none'});
 applyPrefs();route=decodeURIComponent(location.hash.slice(1))||'home';if(route==='search')route='home';render();

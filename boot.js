@@ -7,7 +7,7 @@ var lock=document.getElementById('lock'),msg=document.getElementById('lmsg'),pw=
 function show(m){lock.style.display='flex';if(m)msg.textContent=m;setTimeout(function(){pw.focus()},50)}
 var enc=null;
 function getEnc(){return enc?Promise.resolve(enc):fetch('data.enc?'+Date.now(),{cache:'no-cache'}).catch(function(){return fetch('data.enc')}).then(function(r){if(!r.ok)throw new Error('load');return r.json()}).then(function(j){enc=j;return j})}
-function decrypt(key,j){return crypto.subtle.decrypt({name:'AES-GCM',iv:b64d(j.iv)},key,b64d(j.ct)).then(function(buf){return new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).text()})}
+function decrypt(key,j){window.__kbkey=key;return crypto.subtle.decrypt({name:'AES-GCM',iv:b64d(j.iv)},key,b64d(j.ct)).then(function(buf){return new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).text()})}
 function start(txt){
   window.DATA=JSON.parse(txt);lock.style.display='none';
   try{var prev=localStorage.getItem('kb737_ver');localStorage.setItem('kb737_ver',DATA.built+'#'+enc.v);if(prev&&prev!==DATA.built+'#'+enc.v)setTimeout(function(){var t=document.getElementById('toast');if(t){t.textContent='已更新到最新版本 '+DATA.built;t.classList.add('show');setTimeout(function(){t.classList.remove('show')},2500)}},800)}catch(e){}
