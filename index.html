@@ -144,6 +144,9 @@ details.intro blockquote,details.intro p{margin:6px 0;padding:0;border:0;backgro
 .doc details.orig[open] summary{border-bottom:1px solid var(--line)}
 .doc details.orig img{display:block;width:100%;height:auto;cursor:zoom-in;background:#fff}
 .doc img[data-img]{display:block;max-width:100%;height:auto;margin:10px 0;border:1px solid var(--line);border-radius:8px;cursor:zoom-in;background:#fff}
+.edbar{position:sticky;top:0;z-index:5;display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--panel);border:1px solid var(--acc);border-radius:10px;padding:8px 12px;margin:0 0 10px;font-size:13px;color:var(--mute)}.edbar span{flex:1}
+.doc.editing{outline:2px dashed var(--acc);outline-offset:4px}
+.edtag{font-size:12px;color:var(--warn);margin:0 0 8px}.edtag a{color:var(--acc);cursor:pointer}
 .doc p.hw{color:var(--warn);font-size:13px;margin:14px 0 4px}
 #zoom{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:60;display:none;overflow:auto;cursor:zoom-out}
 #zoom img{display:block;max-width:none;width:min(1400px,200%);margin:20px auto;background:#fff}
