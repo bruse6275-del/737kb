@@ -17,14 +17,14 @@ function tryCached(){
   var k;try{k=JSON.parse(localStorage.getItem(KEYK)||'null')}catch(e){}
   return getEnc().then(function(j){
     if(!k||k.salt!==j.salt)return show();
-    return crypto.subtle.importKey('raw',b64d(k.raw),'AES-GCM',false,['decrypt']).then(function(key){return decrypt(key,j)}).then(start,function(){show('请重新输入密码')});
+    return crypto.subtle.importKey('raw',b64d(k.raw),'AES-GCM',false,['encrypt','decrypt']).then(function(key){return decrypt(key,j)}).then(start,function(){show('请重新输入密码')});
   },function(){show('数据加载失败：请联网后再打开一次')});
 }
 function unlock(){
   var p=pw.value;if(!p)return;msg.textContent='正在解锁…';
   getEnc().then(function(j){
     return crypto.subtle.importKey('raw',new TextEncoder().encode(p),'PBKDF2',false,['deriveKey']).then(function(base){
-      return crypto.subtle.deriveKey({name:'PBKDF2',salt:b64d(j.salt),iterations:ITER,hash:'SHA-256'},base,{name:'AES-GCM',length:256},true,['decrypt']);
+      return crypto.subtle.deriveKey({name:'PBKDF2',salt:b64d(j.salt),iterations:ITER,hash:'SHA-256'},base,{name:'AES-GCM',length:256},true,['encrypt','decrypt']);
     }).then(function(key){
       return decrypt(key,j).then(function(txt){
         return crypto.subtle.exportKey('raw',key).then(function(raw){try{localStorage.setItem(KEYK,JSON.stringify({salt:j.salt,raw:b64e(raw)}))}catch(e){}start(txt)});

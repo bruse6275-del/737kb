@@ -10,7 +10,29 @@ function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 // ---------- 索引 ----------
 const SECS=[],CHS=[];
 DATA.topics.forEach(tp=>tp.chapters.forEach(c=>{c.tp=tp;CHS.push(c);c.secs.forEach((s,i)=>{s.key=c.id+':'+i;s.ch=c;s.i=i;s.sid=tp.t+'/'+c.t+'/'+s.t;s.h0=s.h;SECS.push(s)})}));
-function applyEdits(){SECS.forEach(s=>{s.h=S.edit[s.sid]||s.h0;s.ed=!!S.edit[s.sid];s.gone=!!S.del[s.sid];s.txt=s.h.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ')})}
+// ---------- 同步（修改和删除存在仓库 sync.enc，所有设备共用） ----------
+const REPO='bruse6275-del/737kb',SKEY='kb737_sync',TKEY='kb737_gh';
+let SY;try{SY=JSON.parse(localStorage.getItem(SKEY))||{}}catch(e){SY={}}SY.edit=SY.edit||{};SY.del=SY.del||{};
+const saveSY=()=>{try{localStorage.setItem(SKEY,JSON.stringify(SY))}catch(e){}};
+const ghTok=()=>{try{return localStorage.getItem(TKEY)||''}catch(e){return ''}};
+const b64e=u8=>{let s='';for(let i=0;i<u8.length;i+=8192)s+=String.fromCharCode.apply(null,u8.subarray(i,i+8192));return btoa(s)};
+const b64d=t=>Uint8Array.from(atob(t.replace(/\s/g,'')),c=>c.charCodeAt(0));
+async function encS(o){const iv=crypto.getRandomValues(new Uint8Array(12));const ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},window.__kbkey,new TextEncoder().encode(JSON.stringify(o))));const a=new Uint8Array(12+ct.length);a.set(iv);a.set(ct,12);return b64e(a)}
+async function decS(t){const b=b64d(t);return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:b.subarray(0,12)},window.__kbkey,b.subarray(12))))}
+async function ghGet(){const h={Accept:'application/vnd.github+json'};const t=ghTok();if(t)h.Authorization='Bearer '+t;
+ const r=await fetch(`https://api.github.com/repos/${REPO}/contents/sync.enc?ref=main&x=${Date.now()}`,{headers:h,cache:'no-store'});
+ if(r.status===404)return{st:{edit:{},del:{}},sha:null};if(!r.ok)throw new Error('读取同步失败 '+r.status);
+ const j=await r.json();return{st:await decS(j.content),sha:j.sha}}
+async function syncPull(quiet){try{const {st}=await ghGet();SY={edit:st.edit||{},del:st.del||{}};saveSY();applyEdits();if(!document.querySelector('.doc.editing'))render();if(!quiet)toast('已同步')}catch(e){if(!quiet)toast('同步失败：'+e.message)}}
+async function syncPush(mut,msg){const t=ghTok();if(!t){toast('先点左下「☁ 同步」设置一次');return false}
+ for(let k=0;k<3;k++){try{const {st,sha}=await ghGet();st.edit=st.edit||{};st.del=st.del||{};mut(st);
+  const body={message:msg||'知识库修改',content:await encS(st),branch:'main'};if(sha)body.sha=sha;
+  const r=await fetch(`https://api.github.com/repos/${REPO}/contents/sync.enc`,{method:'PUT',headers:{Authorization:'Bearer '+t,Accept:'application/vnd.github+json','Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(r.status===409||r.status===422)continue;if(!r.ok)throw new Error(r.status===401||r.status===403?'令牌无效或没有写权限':'HTTP '+r.status);
+  SY={edit:st.edit,del:st.del};saveSY();applyEdits();return true}catch(e){toast('同步失败：'+e.message);return false}}
+ toast('同步冲突，请重试');return false}
+const goneOf=s=>!!(SY.del[s.sid]||SY.del['ch:'+s.ch.tp.t+'/'+s.ch.t]||SY.del['tp:'+s.ch.tp.t]);
+function applyEdits(){SECS.forEach(s=>{s.h=SY.edit[s.sid]||s.h0;s.ed=!!SY.edit[s.sid];s.gone=goneOf(s);s.txt=s.h.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ')})}
 applyEdits();
 const live=a=>a.filter(s=>!s.gone);
 const byKey=k=>SECS.find(s=>s.key===k), myNote=id=>S.mine.find(m=>m.id===id);
@@ -22,9 +44,9 @@ const tpSecs=tp=>tp.chapters.flatMap(c=>c.secs);
 // ---------- 侧栏 ----------
 function renderNav(){
  let h=`<div class="nv ${route==='home'?'on':''}" data-r="home"><span class="ic">⌂</span>总览</div>`;
- DATA.topics.forEach(tp=>{const [n,t]=prog(tpSecs(tp));
+ DATA.topics.forEach(tp=>{if(!live(tpSecs(tp)).length)return;const [n,t]=prog(tpSecs(tp));
   h+=`<div><div class="tp ${S.shut[tp.id]?'shut':''}" data-shut="${tp.id}"><span>${tp.icon}</span><b>${esc(tp.t)}</b><span class="pg">${n}/${t} ${S.shut[tp.id]?'▸':'▾'}</span></div><div class="tbody">`;
-  tp.chapters.forEach(c=>{const [n2,t2]=prog(c.secs);
+  tp.chapters.forEach(c=>{if(!live(c.secs).length)return;const [n2,t2]=prog(c.secs);
    h+=`<div class="ch ${openCh.has(c.id)?'open':''}"><div class="nv" data-tog="${c.id}"><span class="ic">${openCh.has(c.id)?'▾':'▸'}</span>${esc(c.t)}<span class="pg">${n2}/${t2}</span></div><div class="secs">`+
    live(c.secs).map(s=>`<div class="nv ${S.done[s.key]?'done':''} ${route===s.key?'on':''}" data-r="${s.key}"><span class="dot"></span>${esc(s.t)}${s.ed?' <span style="color:var(--warn)">✎</span>':''}${S.star[s.key]?' <span style="color:#d99a06">★</span>':''}</div>`).join('')+`</div></div>`});
   if(tp.train)h+=`<div class="nv ${route==='train:'+tp.id?'on':''}" data-r="train:${tp.id}"><span class="ic">✎</span>${esc(tp.train.t)}</div>`;
@@ -48,7 +70,7 @@ window.onhashchange=()=>{const r=decodeURIComponent(location.hash.slice(1))||'ho
 const setTop=(c,a)=>{$('#crumb').innerHTML=c;$('#acts').innerHTML=a||''};
 function render(hl){
  $('#main').scrollTop=0;const r=route;
- if(/^t\d+c\d+:\d+$/.test(r)){const s=byKey(r);s?secView(s,hl):(route='home',homeView())}
+ if(/^t\d+c\d+:\d+$/.test(r)){const s=byKey(r);s&&!s.gone?secView(s,hl):(route='home',homeView())}
  else if(r.startsWith('train:'))trainView(r.slice(6));
  else if(r.startsWith('my:')){const m=myNote(r.slice(3));m?myView(m,hl):(route='home',homeView())}
  else if(r.startsWith('edit:'))editView(r.slice(5));
@@ -61,10 +83,11 @@ function secView(s,hl){
  openCh.add(s.ch.id);sessionStorage.setItem('kbopen',JSON.stringify([...openCh]));
  S.recent=[s.key,...S.recent.filter(k=>k!==s.key)].slice(0,8);save();
  const L=live(SECS),i=L.indexOf(s),pv=i>=0?L[i-1]:null,nx=i>=0?L[i+1]:null;
- setTop(`${s.ch.tp.icon} ${esc(s.ch.tp.t)} › ${esc(s.ch.t)} › ${esc(s.t)}`,`<button class="tb star ${S.star[s.key]?'act':''}" id="bStar">${S.star[s.key]?'★ 已收藏':'☆ 收藏'}</button> <button class="tb ${S.done[s.key]?'act':''}" id="bDone">${S.done[s.key]?'✓ 已掌握':'○ 标记掌握'}</button> <button class="tb" id="bEdit">✎ 编辑</button> <button class="tb" id="bDel">🗑 删除</button>`);
+ setTop(`${s.ch.tp.icon} ${esc(s.ch.tp.t)} › ${esc(s.ch.t)} › ${esc(s.t)}`,`<button class="tb star ${S.star[s.key]?'act':''}" id="bStar">${S.star[s.key]?'★ 已收藏':'☆ 收藏'}</button> <button class="tb ${S.done[s.key]?'act':''}" id="bDone">${S.done[s.key]?'✓ 已掌握':'○ 标记掌握'}</button> <button class="tb" id="bEdit">✎ 编辑</button> <button class="tb" id="bDel">🗑 删除 ▾</button>`);
  $('#view').innerHTML=`<div class="ps">${esc(s.ch.tp.t)} › ${esc(s.ch.t)} · 第 ${s.i+1}/${s.ch.secs.length} 节</div><h1 class="pt">${esc(s.t)}</h1>
  ${s.ch.intro?`<details class="intro"><summary>本章依据${s.ch.upd?' · 整理于 '+s.ch.upd:''}</summary>${s.ch.intro}</details>`:'<div style="height:10px"></div>'}
- ${s.gone?'<div class="card" style="color:var(--warn)">这一节已删除。<button class="tb" id="bRes">恢复</button></div>':''}${s.ed?'<div class="edtag">✎ 本机已修改 · <a id="bOrig">恢复原文</a></div>':''}
+ ${s.ed?'<div class="edtag">✎ 已修改 · <a id="bOrig">恢复原文</a></div>':''}
+ <div id="delbar" class="edbar" style="display:none"><span>删除后所有设备同步删除，不能恢复</span><button class="tb" data-del="sec">删除本节</button><button class="tb" data-del="ch">删除整章（${s.ch.secs.length} 节）</button><button class="tb" data-del="tp">删除整个专题</button><button class="tb" data-del="x">取消</button></div>
  <div id="edbar" class="edbar" style="display:none"><span>编辑中：直接在下面改文字，可删段落、删图片</span><button class="tb act" id="eSave">保存</button><button class="tb" id="eCancel">取消</button></div>
  <div class="card doc" id="doc">${s.h}</div>
  <div class="card note"><h4>✐ 我的批注（自动保存）</h4><textarea id="nt" placeholder="写下自己的理解、教员讲的要点、飞行中的体会……">${esc(S.notes[s.key]||'')}</textarea><div class="saved" id="sv"></div></div>
@@ -73,10 +96,14 @@ function secView(s,hl){
  $('#bEdit').onclick=()=>{const d=$('#doc');d.contentEditable='true';d.classList.add('editing');$('#edbar').style.display='flex';$('#bEdit').disabled=true;d.querySelectorAll('details').forEach(x=>x.open=true);d.focus()};
  $('#eCancel').onclick=()=>secView(s);
  $('#eSave').onclick=()=>{const d=$('#doc').cloneNode(true);d.querySelectorAll('img[data-img]').forEach(im=>{im.removeAttribute('src');im.removeAttribute('data-ld');im.removeAttribute('style')});const h=d.innerHTML.trim();
-  if(h===s.h0)delete S.edit[s.sid];else S.edit[s.sid]=h;save();applyEdits();toast(h?'已保存修改':'已保存');secView(s);renderNav()};
- $('#bDel').onclick=()=>{if(!confirm('删除这一节「'+s.t+'」？\n只在本机隐藏，可以在「批注与收藏 › 已删除」里恢复。'))return;S.del[s.sid]=Date.now();save();applyEdits();toast('已删除');nx?go(nx.key):pv?go(pv.key):go('home')};
- if($('#bRes'))$('#bRes').onclick=()=>{delete S.del[s.sid];save();applyEdits();toast('已恢复');secView(s);renderNav()};
- if($('#bOrig'))$('#bOrig').onclick=()=>{if(!confirm('放弃本机的修改，恢复原文？'))return;delete S.edit[s.sid];save();applyEdits();toast('已恢复原文');secView(s);renderNav()};
+  $('#eSave').disabled=true;$('#eSave').textContent='保存中…';
+  syncPush(st=>{if(h===s.h0)delete st.edit[s.sid];else st.edit[s.sid]=h},'修改：'+s.t).then(ok=>{if(ok){toast('已保存，所有设备同步');secView(s);renderNav()}else{$('#eSave').disabled=false;$('#eSave').textContent='保存'}})};
+ $('#bDel').onclick=()=>{const b=$('#delbar');b.style.display=b.style.display==='none'?'flex':'none'};
+ $$('#delbar [data-del]').forEach(b=>b.onclick=()=>{const k=b.dataset.del;if(k==='x'){$('#delbar').style.display='none';return}
+  const id=k==='sec'?s.sid:k==='ch'?'ch:'+s.ch.tp.t+'/'+s.ch.t:'tp:'+s.ch.tp.t,name=k==='sec'?'这一节「'+s.t+'」':k==='ch'?'整章「'+s.ch.t+'」':'整个专题「'+s.ch.tp.t+'」';
+  if(!confirm('删除'+name+'？\n所有设备同步删除，不能恢复。'))return;
+  syncPush(st=>{st.del[id]=Date.now()},'删除：'+name).then(ok=>{if(!ok)return;toast('已删除');const L=live(SECS);const n2=L.find(x=>SECS.indexOf(x)>SECS.indexOf(s))||L[L.length-1];n2?go(n2.key):go('home')})});
+ if($('#bOrig'))$('#bOrig').onclick=()=>{if(!confirm('放弃修改，恢复原文？所有设备同步。'))return;syncPush(st=>{delete st.edit[s.sid]},'恢复原文：'+s.t).then(ok=>{if(ok){toast('已恢复原文');secView(s);renderNav()}})};
  $('#bStar').onclick=()=>{S.star[s.key]?delete S.star[s.key]:S.star[s.key]=1;save();secView(s);renderNav()};
  $('#bDone').onclick=()=>{S.done[s.key]?delete S.done[s.key]:S.done[s.key]=1;save();toast(S.done[s.key]?'已标记掌握':'已取消');secView(s);renderNav()};
  let tm;$('#nt').oninput=e=>{clearTimeout(tm);tm=setTimeout(()=>{e.target.value.trim()?S.notes[s.key]=e.target.value:delete S.notes[s.key];save();$('#sv').textContent='已保存 '+new Date().toTimeString().slice(0,5)},400)};
@@ -190,21 +217,24 @@ function marksView(){
  $('#view').innerHTML=`<h1 class="pt">批注与收藏</h1><div class="ps">${ns.length} 条批注 · ${st.length} 个收藏</div>`+
  `<div class="card list"><b>★ 收藏</b>${st.map(s=>`<a data-k="${s.key}">${esc(s.t)}<small>${esc(s.ch.tp.t)} › ${esc(s.ch.t)}</small></a>`).join('')||'<p style="color:var(--mute)">在任一小节点「☆ 收藏」</p>'}</div>`+
  (ns.map(([s,n])=>`<div class="card"><a style="cursor:pointer;color:var(--acc)" data-k="${s.key}">${esc(s.ch.t)} › ${esc(s.t)} →</a><p style="white-space:pre-wrap;margin:8px 0 0">${esc(n)}</p></div>`).join('')||'<div class="card" style="color:var(--mute)">还没有批注。在任一小节底部写下自己的理解，会自动汇总到这里。</div>');
- const eds=SECS.filter(x=>x.ed&&!x.gone),gs=SECS.filter(x=>x.gone);
- $('#view').insertAdjacentHTML('beforeend',`<div class="card list"><b>✎ 本机修改过的小节</b>${eds.map(x=>`<a data-k="${x.key}">${esc(x.t)}<small>${esc(x.ch.tp.t)} › ${esc(x.ch.t)}</small></a>`).join('')||'<p style="color:var(--mute)">在任一小节点「✎ 编辑」可直接修改内容</p>'}</div>
- <div class="card list"><b>🗑 已删除的小节</b>${gs.map(x=>`<a data-res="${x.sid}">${esc(x.t)} <span style="color:var(--acc)">· 恢复</span><small>${esc(x.ch.tp.t)} › ${esc(x.ch.t)}</small></a>`).join('')||'<p style="color:var(--mute)">没有</p>'}</div>`);
+ const eds=SECS.filter(x=>x.ed&&!x.gone);
+ $('#view').insertAdjacentHTML('beforeend',`<div class="card list"><b>✎ 修改过的小节</b>${eds.map(x=>`<a data-k="${x.key}">${esc(x.t)}<small>${esc(x.ch.tp.t)} › ${esc(x.ch.t)}</small></a>`).join('')||'<p style="color:var(--mute)">在任一小节点「✎ 编辑」可直接修改内容</p>'}</div>
+`);
  $$('#view [data-k]').forEach(a=>a.onclick=()=>go(a.dataset.k));
- $$('#view [data-res]').forEach(a=>a.onclick=()=>{delete S.del[a.dataset.res];save();applyEdits();toast('已恢复');marksView();renderNav()});
 }
 // ---------- 设置 / 备份 ----------
 function applyPrefs(){document.body.classList.toggle('dark',!!S.dark);document.documentElement.style.setProperty('--fs',S.fs+'px')}
+$('#bSync').onclick=()=>{const t=ghTok();
+ const v=prompt((t?'已设置同步。\n留空直接点确定 = 立即同步；输入新令牌 = 更换；输入 off = 本机停用。':'设置同步（每台设备一次）：\n在 GitHub 网页 Settings › Developer settings › Fine-grained tokens 新建令牌，仓库只选 737kb，权限 Contents 选 Read and write，复制后粘贴到这里。\n不设置也能看到别的设备的删除和修改，但本机不能删改。')+'\n','');
+ if(v===null)return;const x=v.trim();if(x==='off'){localStorage.removeItem(TKEY);toast('本机已停用同步写入');return}
+ if(x){localStorage.setItem(TKEY,x)}syncPull()};
 $('#bTheme').onclick=()=>{S.dark=!S.dark;save();applyPrefs()};
 $('#bFont').onclick=()=>{S.fs=S.fs>=19?14:S.fs+1;save();applyPrefs();toast('字号 '+S.fs)};
 $('#bData').onclick=()=>{
- if(confirm('确定 = 导出备份（进度、批注、我的笔记、修改和删除、答复）\n取消 = 从备份文件恢复')){
+ if(confirm('确定 = 导出备份（进度、批注、我的笔记、答复）\n取消 = 从备份文件恢复')){
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(S,null,1)],{type:'application/json'}));a.download='737知识库备份_'+fmt(Date.now())+'.json';a.click();toast('已导出')
  }else $('#imp').click()};
-$('#imp').onchange=e=>{const f=e.target.files[0];if(!f)return;f.text().then(t=>{try{S=norm(JSON.parse(t))}catch(x){return toast('文件不对')}save();applyEdits();applyPrefs();go('home');toast('已恢复')});e.target.value=''};
+$('#imp').onchange=e=>{const f=e.target.files[0];if(!f)return;f.text().then(t=>{try{S=norm(JSON.parse(t))}catch(x){return toast('文件不对')}save();applyPrefs();go('home');toast('已恢复')});e.target.value=''};
 $('#menu').onclick=()=>document.body.classList.toggle('nav');$('#mask').onclick=()=>document.body.classList.remove('nav');
 document.addEventListener('keydown',e=>{
  if(/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)||e.metaKey||e.ctrlKey)return;
@@ -221,3 +251,4 @@ function fillImgs(){$$('#view img[data-img]').forEach(i=>{if(i.dataset.ld)return
 new MutationObserver(fillImgs).observe(document.getElementById('view'),{childList:true,subtree:true});
 document.addEventListener('click',e=>{if(e.target.closest('.doc.editing'))return;const i=e.target.closest('.doc img[data-img],.doc details.orig img');if(i){$('#zimg').src=i.src;$('#zoom').style.display='block'}else if(e.target.closest('#zoom'))$('#zoom').style.display='none'});
 applyPrefs();route=decodeURIComponent(location.hash.slice(1))||'home';if(route==='search')route='home';render();
+setTimeout(()=>syncPull(true),300);
