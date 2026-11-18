@@ -24,7 +24,7 @@ async function pagesGet(){const r=await fetch('sync.enc?x='+Date.now(),{cache:'n
  const b=new Uint8Array(await r.arrayBuffer());return{st:JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:b.subarray(0,12)},window.__kbkey,b.subarray(12)))),sha:null}}
 async function ghGet(){const h={Accept:'application/vnd.github+json'};const t=ghTok();if(t)h.Authorization='Bearer '+t;
  const r=await tfetch(`https://api.github.com/repos/${REPO}/contents/sync.enc?ref=main&x=${Date.now()}`,{headers:h,cache:'no-store'},15000);
- if(r.status===404)return{st:{edit:{},del:{}},sha:null};if(!r.ok)throw new Error('读取同步失败 '+r.status);
+ if(r.status===404)return{st:{edit:{},del:{}},sha:null};if(r.status===401)throw new Error('令牌无效（401）：过期、被删或没复制全，点左下「☁ 同步」重新粘贴新令牌');if(!r.ok)throw new Error('读取同步失败 '+r.status);
  const j=await r.json();return{st:await decS(j.content),sha:j.sha}}
 async function syncPull(quiet){try{let st;if(ghTok()){try{st=(await ghGet()).st}catch(e){st=(await pagesGet()).st}}else st=(await pagesGet()).st;SY={edit:st.edit||{},del:st.del||{}};saveSY();applyEdits();if(!document.querySelector('.doc.editing'))render();if(!quiet)toast(ghTok()?'已同步':'已读取最新的修改和删除（本机未设置令牌，只能看不能改）')}catch(e){if(!quiet)toast('同步失败：'+(e.message==='Load failed'||e.message==='Failed to fetch'?'网络连不上':e.message))}}
 async function syncPush(mut,msg){const t=ghTok();if(!t){toast('先点左下「☁ 同步」设置一次');return false}
@@ -253,7 +253,13 @@ function applyPrefs(){document.body.classList.toggle('dark',!!S.dark);document.d
 $('#bSync').onclick=()=>{const t=ghTok();
  const v=prompt((t?'已设置同步。\n留空直接点确定 = 立即同步；输入新令牌 = 更换；输入 off = 本机停用。':'设置同步（每台设备一次）：\n在 GitHub 网页 Settings › Developer settings › Fine-grained tokens 新建令牌，仓库只选 737kb，权限 Contents 选 Read and write，复制后粘贴到这里。\n不设置也能看到别的设备的删除和修改，但本机不能删改。')+'\n','');
  if(v===null)return;const x=v.trim();if(x==='off'){localStorage.removeItem(TKEY);toast('本机已停用同步写入');return}
- if(x){localStorage.setItem(TKEY,x)}syncPull()};
+ if(x){const tk=x.replace(/\s+/g,'');if(!/^(github_pat_|ghp_)/.test(tk)){toast('这不像 GitHub 令牌（应以 github_pat_ 开头），没保存');return}
+  toast('正在验证令牌…');tfetch(`https://api.github.com/repos/${REPO}`,{headers:{Accept:'application/vnd.github+json',Authorization:'Bearer '+tk},cache:'no-store'},15000).then(r=>{
+   if(r.status===401){toast('令牌无效（401）：过期、被删或没复制全，请重新生成');return}
+   if(r.status===404||r.status===403){toast('令牌没有 737kb 仓库的权限：新建时仓库要选 737kb，Contents 选 Read and write');return}
+   if(!r.ok){toast('验证失败 HTTP '+r.status);return}
+   localStorage.setItem(TKEY,tk);toast('令牌有效，已保存');syncPull(true)},e=>toast(e.name==='AbortError'?'连 GitHub 超时，换个网络再设置':'连不上 GitHub，换个网络再设置'));return}
+ syncPull()};
 $('#bTheme').onclick=()=>{S.dark=!S.dark;save();applyPrefs()};
 $('#bFont').onclick=()=>{S.fs=S.fs>=19?14:S.fs+1;save();applyPrefs();toast('字号 '+S.fs)};
 $('#bData').onclick=()=>{
