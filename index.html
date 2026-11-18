@@ -147,6 +147,7 @@ details.intro blockquote,details.intro p{margin:6px 0;padding:0;border:0;backgro
 .edbar{position:sticky;top:0;z-index:5;display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--panel);border:1px solid var(--acc);border-radius:10px;padding:8px 12px;margin:0 0 10px;font-size:13px;color:var(--mute)}.edbar span{flex:1}
 .doc.editing{outline:2px dashed var(--acc);outline-offset:4px}
 .edtag{font-size:12px;color:var(--warn);margin:0 0 8px}.edtag a{color:var(--acc);cursor:pointer}
+@media print{#side,#top,#mask,.note,.pager,.edbar,.edtag,#toast,details.intro,#tools{display:none!important}#main{position:static!important;overflow:visible!important;height:auto!important}body{background:#fff!important}.card.doc{border:0!important;box-shadow:none!important}.doc img[data-img]{break-inside:avoid}}
 .doc p.hw{color:var(--warn);font-size:13px;margin:14px 0 4px}
 #zoom{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:60;display:none;overflow:auto;cursor:zoom-out}
 #zoom img{display:block;max-width:none;width:min(1400px,200%);margin:20px auto;background:#fff}

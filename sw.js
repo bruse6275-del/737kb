@@ -1,6 +1,6 @@
-const C='kb737-202611181044';const F=['./','./index.html','./boot.js','./app.js','./data.enc','./manifest.webmanifest','./icon-192.png','./icon-512.png','./apple-touch-icon.png'];
+const C='kb737-202611181050';const F=['./','./index.html','./boot.js','./app.js','./data.enc','./manifest.webmanifest','./icon-192.png','./icon-512.png','./apple-touch-icon.png'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(F.map(u=>new Request(u,{cache:'reload'})))).then(()=>self.skipWaiting()))});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C&&/^kb737-/.test(k)).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
-self.addEventListener('fetch',e=>{if(e.request.method!=='GET')return;const u=new URL(e.request.url);if(u.origin!==location.origin)return;
+self.addEventListener('fetch',e=>{if(e.request.method!=='GET')return;const u=new URL(e.request.url);if(u.origin!==location.origin||/sync\.enc$/.test(u.pathname))return;
 if(/\/i\/[^/]+\.bin$/.test(u.pathname)){e.respondWith(caches.open('kb737img').then(c=>c.match(u.pathname).then(h=>h||fetch(e.request).then(r=>{if(r.ok)c.put(u.pathname,r.clone());return r}))));return}
 e.respondWith((async()=>{const key=u.origin+u.pathname;const hit=await caches.match(key,{ignoreSearch:true});const net=fetch(key,{cache:'no-cache'}).then(r=>{if(r.ok){const cp=r.clone();caches.open(C).then(c=>c.put(key,cp))}else if(hit)return hit;return r});e.waitUntil(net.catch(()=>{}));if(!hit)return net.catch(()=>caches.match('./index.html'));return Promise.race([net.catch(()=>hit),new Promise(res=>setTimeout(()=>res(hit),2500))])})())});

@@ -19,17 +19,19 @@ const b64e=u8=>{let s='';for(let i=0;i<u8.length;i+=8192)s+=String.fromCharCode.
 const b64d=t=>Uint8Array.from(atob(t.replace(/\s/g,'')),c=>c.charCodeAt(0));
 async function encS(o){const iv=crypto.getRandomValues(new Uint8Array(12));const ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},window.__kbkey,new TextEncoder().encode(JSON.stringify(o))));const a=new Uint8Array(12+ct.length);a.set(iv);a.set(ct,12);return b64e(a)}
 async function decS(t){const b=b64d(t);return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:b.subarray(0,12)},window.__kbkey,b.subarray(12))))}
+async function pagesGet(){const r=await fetch('sync.enc?x='+Date.now(),{cache:'no-store'});if(r.status===404)return{st:{edit:{},del:{}},sha:null};if(!r.ok)throw new Error('读取同步失败 '+r.status);
+ const b=new Uint8Array(await r.arrayBuffer());return{st:JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:b.subarray(0,12)},window.__kbkey,b.subarray(12)))),sha:null}}
 async function ghGet(){const h={Accept:'application/vnd.github+json'};const t=ghTok();if(t)h.Authorization='Bearer '+t;
  const r=await fetch(`https://api.github.com/repos/${REPO}/contents/sync.enc?ref=main&x=${Date.now()}`,{headers:h,cache:'no-store'});
  if(r.status===404)return{st:{edit:{},del:{}},sha:null};if(!r.ok)throw new Error('读取同步失败 '+r.status);
  const j=await r.json();return{st:await decS(j.content),sha:j.sha}}
-async function syncPull(quiet){try{const {st}=await ghGet();SY={edit:st.edit||{},del:st.del||{}};saveSY();applyEdits();if(!document.querySelector('.doc.editing'))render();if(!quiet)toast('已同步')}catch(e){if(!quiet)toast('同步失败：'+e.message)}}
+async function syncPull(quiet){try{let st;if(ghTok()){try{st=(await ghGet()).st}catch(e){st=(await pagesGet()).st}}else st=(await pagesGet()).st;SY={edit:st.edit||{},del:st.del||{}};saveSY();applyEdits();if(!document.querySelector('.doc.editing'))render();if(!quiet)toast(ghTok()?'已同步':'已读取最新的修改和删除（本机未设置令牌，只能看不能改）')}catch(e){if(!quiet)toast('同步失败：'+(e.message==='Load failed'||e.message==='Failed to fetch'?'网络连不上':e.message))}}
 async function syncPush(mut,msg){const t=ghTok();if(!t){toast('先点左下「☁ 同步」设置一次');return false}
  for(let k=0;k<3;k++){try{const {st,sha}=await ghGet();st.edit=st.edit||{};st.del=st.del||{};mut(st);
   const body={message:msg||'知识库修改',content:await encS(st),branch:'main'};if(sha)body.sha=sha;
   const r=await fetch(`https://api.github.com/repos/${REPO}/contents/sync.enc`,{method:'PUT',headers:{Authorization:'Bearer '+t,Accept:'application/vnd.github+json','Content-Type':'application/json'},body:JSON.stringify(body)});
   if(r.status===409||r.status===422)continue;if(!r.ok)throw new Error(r.status===401||r.status===403?'令牌无效或没有写权限':'HTTP '+r.status);
-  SY={edit:st.edit,del:st.del};saveSY();applyEdits();return true}catch(e){toast('同步失败：'+e.message);return false}}
+  SY={edit:st.edit,del:st.del};saveSY();applyEdits();return true}catch(e){toast('同步失败：'+(e.message==='Load failed'||e.message==='Failed to fetch'?'连不上 GitHub，换个网络再试':e.message));return false}}
  toast('同步冲突，请重试');return false}
 const goneOf=s=>!!(SY.del[s.sid]||SY.del['ch:'+s.ch.tp.t+'/'+s.ch.t]||SY.del['tp:'+s.ch.tp.t]);
 function applyEdits(){SECS.forEach(s=>{s.h=SY.edit[s.sid]||s.h0;s.ed=!!SY.edit[s.sid];s.gone=goneOf(s);s.txt=s.h.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ')})}
@@ -83,10 +85,11 @@ function secView(s,hl){
  openCh.add(s.ch.id);sessionStorage.setItem('kbopen',JSON.stringify([...openCh]));
  S.recent=[s.key,...S.recent.filter(k=>k!==s.key)].slice(0,8);save();
  const L=live(SECS),i=L.indexOf(s),pv=i>=0?L[i-1]:null,nx=i>=0?L[i+1]:null;
- setTop(`${s.ch.tp.icon} ${esc(s.ch.tp.t)} › ${esc(s.ch.t)} › ${esc(s.t)}`,`<button class="tb star ${S.star[s.key]?'act':''}" id="bStar">${S.star[s.key]?'★ 已收藏':'☆ 收藏'}</button> <button class="tb ${S.done[s.key]?'act':''}" id="bDone">${S.done[s.key]?'✓ 已掌握':'○ 标记掌握'}</button> <button class="tb" id="bEdit">✎ 编辑</button> <button class="tb" id="bDel">🗑 删除 ▾</button>`);
+ setTop(`${s.ch.tp.icon} ${esc(s.ch.tp.t)} › ${esc(s.ch.t)} › ${esc(s.t)}`,`<button class="tb star ${S.star[s.key]?'act':''}" id="bStar">${S.star[s.key]?'★ 已收藏':'☆ 收藏'}</button> <button class="tb ${S.done[s.key]?'act':''}" id="bDone">${S.done[s.key]?'✓ 已掌握':'○ 标记掌握'}</button> <button class="tb" id="bEdit">✎ 编辑</button> <button class="tb" id="bExp">⤴ 导出</button> <button class="tb" id="bDel">🗑 删除 ▾</button>`);
  $('#view').innerHTML=`<div class="ps">${esc(s.ch.tp.t)} › ${esc(s.ch.t)} · 第 ${s.i+1}/${s.ch.secs.length} 节</div><h1 class="pt">${esc(s.t)}</h1>
  ${s.ch.intro?`<details class="intro"><summary>本章依据${s.ch.upd?' · 整理于 '+s.ch.upd:''}</summary>${s.ch.intro}</details>`:'<div style="height:10px"></div>'}
  ${s.ed?'<div class="edtag">✎ 已修改 · <a id="bOrig">恢复原文</a></div>':''}
+ <div id="expbar" class="edbar" style="display:none"><span>导出分享</span><button class="tb" data-ex="copy">复制文字</button><button class="tb" data-ex="sec">分享本节文件</button><button class="tb" data-ex="ch">分享整章文件</button><button class="tb" data-ex="pdf">打印 / 存 PDF</button><button class="tb" data-ex="x">取消</button></div>
  <div id="delbar" class="edbar" style="display:none"><span>删除后所有设备同步删除，不能恢复</span><button class="tb" data-del="sec">删除本节</button><button class="tb" data-del="ch">删除整章（${s.ch.secs.length} 节）</button><button class="tb" data-del="tp">删除整个专题</button><button class="tb" data-del="x">取消</button></div>
  <div id="edbar" class="edbar" style="display:none"><span>编辑中：直接在下面改文字，可删段落、删图片</span><button class="tb act" id="eSave">保存</button><button class="tb" id="eCancel">取消</button></div>
  <div class="card doc" id="doc">${s.h}</div>
@@ -98,6 +101,11 @@ function secView(s,hl){
  $('#eSave').onclick=()=>{const d=$('#doc').cloneNode(true);d.querySelectorAll('img[data-img]').forEach(im=>{im.removeAttribute('src');im.removeAttribute('data-ld');im.removeAttribute('style')});const h=d.innerHTML.trim();
   $('#eSave').disabled=true;$('#eSave').textContent='保存中…';
   syncPush(st=>{if(h===s.h0)delete st.edit[s.sid];else st.edit[s.sid]=h},'修改：'+s.t).then(ok=>{if(ok){toast('已保存，所有设备同步');secView(s);renderNav()}else{$('#eSave').disabled=false;$('#eSave').textContent='保存'}})};
+ $('#bExp').onclick=()=>{const b=$('#expbar');b.style.display=b.style.display==='none'?'flex':'none'};
+ $$('#expbar [data-ex]').forEach(b=>b.onclick=()=>{const k=b.dataset.ex;$('#expbar').style.display='none';if(k==='x')return;
+  if(k==='copy'){const t=s.t+'\n\n'+$('#doc').innerText.replace(/\n{3,}/g,'\n\n')+'\n\n——摘自 737 飞行知识库';(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast('已复制，可以粘贴到微信'),()=>{const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove();toast('已复制')});return}
+  if(k==='pdf'){printNow();return}
+  exportFile(k==='sec'?[s]:live(s.ch.secs),k==='sec'?s.t:s.ch.t)});
  $('#bDel').onclick=()=>{const b=$('#delbar');b.style.display=b.style.display==='none'?'flex':'none'};
  $$('#delbar [data-del]').forEach(b=>b.onclick=()=>{const k=b.dataset.del;if(k==='x'){$('#delbar').style.display='none';return}
   const id=k==='sec'?s.sid:k==='ch'?'ch:'+s.ch.tp.t+'/'+s.ch.t:'tp:'+s.ch.tp.t,name=k==='sec'?'这一节「'+s.t+'」':k==='ch'?'整章「'+s.ch.t+'」':'整个专题「'+s.ch.tp.t+'」';
@@ -211,6 +219,23 @@ function askView(){
  $('#cpy').onclick=()=>{const L=DATA.questions.filter((_,i)=>!(S.ans[i]&&S.ans[i].done));const t='以下问题请技术室帮忙确认：\n'+L.map((q,i)=>`${i+1}. ${q[0]}（${q[1]}）`).join('\n');
   (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast('已复制'),()=>prompt('复制下面的内容：',t))};
 }
+// ---------- 导出 ----------
+const toDataURL=u=>fetch(u).then(r=>r.blob()).then(b=>new Promise(res=>{const f=new FileReader();f.onload=()=>res(f.result);f.readAsDataURL(b)}));
+async function inlineImgs(root){for(const im of root.querySelectorAll('img[data-img]')){const v=DATA.imgs[im.dataset.img]||'';try{im.src=v[0]==='@'?await toDataURL(await lazyImg(v.slice(1))):v}catch(e){im.alt='（截图未能导出）'}im.removeAttribute('data-img');im.removeAttribute('data-ld');im.removeAttribute('style');im.removeAttribute('loading')}}
+async function exportFile(secs,title){
+ const n=secs.reduce((a,x)=>a+(x.h.match(/data-img=/g)||[]).length,0);
+ if(n>40&&!confirm(`这一章有 ${n} 张截图，导出的文件会比较大，继续？`))return;
+ toast('正在生成文件…');
+ const box=document.createElement('div');box.innerHTML=secs.map(x=>`<h2>${esc(x.t)}</h2>${x.h}`).join('<hr>');
+ box.querySelectorAll('details').forEach(d=>d.setAttribute('open',''));await inlineImgs(box);
+ const css='body{font:16px/1.75 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;max-width:860px;margin:0 auto;padding:16px;color:#1d2430}h1{font-size:22px}h2{font-size:19px;margin-top:28px}h4{margin:18px 0 6px;padding:5px 10px;border-left:3px solid #1f5fae;background:#f3f5f8}img{max-width:100%;height:auto;border:1px solid #ddd;border-radius:6px;margin:8px 0}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:6px;font-size:14px}blockquote{margin:10px 0;padding:8px 12px;background:#fdf6e8;border-left:3px solid #c97a10}details{border:1px solid #ddd;border-radius:8px;padding:6px 10px;margin:10px 0}summary{color:#c97a10;font-weight:600}hr{border:0;border-top:1px dashed #ccc;margin:28px 0}.foot{color:#888;font-size:12px;margin-top:30px}';
+ const html=`<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${css}</style></head><body><h1>${esc(title)}</h1>${box.innerHTML}<p class="foot">摘自 737 飞行知识库 · 导出于 ${new Date().toLocaleDateString()}</p></body></html>`;
+ const file=new File([html],title.replace(/[\\/:*?"<>|]/g,'_')+'.html',{type:'text/html'});
+ try{if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title});return}}catch(e){if(e.name==='AbortError')return}
+ const a=document.createElement('a');a.href=URL.createObjectURL(file);a.download=file.name;a.click();toast('已导出文件')}
+async function printNow(){toast('正在准备打印…');const d=$('#doc');d.querySelectorAll('details').forEach(x=>x.open=true);
+ await Promise.all([...d.querySelectorAll('img[data-img]')].map(im=>{const v=DATA.imgs[im.dataset.img]||'';return v[0]==='@'?lazyImg(v.slice(1)).then(u=>{im.src=u}).catch(()=>{}):Promise.resolve()}));
+ setTimeout(()=>window.print(),300)}
 // ---------- 批注与收藏 ----------
 function marksView(){
  setTop('批注与收藏');const ns=Object.entries(S.notes).map(([k,n])=>[byKey(k),n]).filter(x=>x[0]),st=Object.keys(S.star).map(byKey).filter(Boolean);
