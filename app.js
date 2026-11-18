@@ -105,7 +105,7 @@ function secView(s,hl){
  $('#bExp').onclick=()=>{const b=$('#expbar');b.style.display=b.style.display==='none'?'flex':'none'};
  $$('#expbar [data-ex]').forEach(b=>b.onclick=()=>{const k=b.dataset.ex;$('#expbar').style.display='none';if(k==='x')return;
   if(k==='copy'){const t=s.t+'\n\n'+$('#doc').innerText.replace(/\n{3,}/g,'\n\n');(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast('已复制，可以粘贴到微信'),()=>{const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove();toast('已复制')});return}
-  if(k==='pdf'){printNow();return}
+  if(k==='pdf'){printNow([s],s.t);return}
   exportFile(k==='sec'?[s]:live(s.ch.secs),k==='sec'?s.t:s.ch.t)});
  $('#bDel').onclick=()=>{const b=$('#delbar');b.style.display=b.style.display==='none'?'flex':'none'};
  $$('#delbar [data-del]').forEach(b=>b.onclick=()=>{const k=b.dataset.del;if(k==='x'){$('#delbar').style.display='none';return}
@@ -223,20 +223,30 @@ function askView(){
 // ---------- 导出 ----------
 const toDataURL=u=>fetch(u).then(r=>r.blob()).then(b=>new Promise(res=>{const f=new FileReader();f.onload=()=>res(f.result);f.readAsDataURL(b)}));
 async function inlineImgs(root){for(const im of root.querySelectorAll('img[data-img]')){const v=DATA.imgs[im.dataset.img]||'';try{im.src=v[0]==='@'?await toDataURL(await lazyImg(v.slice(1))):v}catch(e){im.alt='（截图未能导出）'}im.removeAttribute('data-img');im.removeAttribute('data-ld');im.removeAttribute('style');im.removeAttribute('loading')}}
+const EXCSS='body{font:16px/1.75 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;max-width:860px;margin:0 auto;padding:16px;color:#1d2430;background:#fff}h1{font-size:22px}h2{font-size:19px;margin-top:28px}h4{margin:18px 0 6px;padding:5px 10px;border-left:3px solid #1f5fae;background:#f3f5f8}img{max-width:100%;height:auto;border:1px solid #ddd;border-radius:6px;margin:8px 0}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:6px;font-size:14px;vertical-align:top;text-align:left}th{background:#eef2f7}strong{color:inherit;background:linear-gradient(transparent 62%,#ffe58a 0)}blockquote{margin:10px 0;padding:8px 12px;background:#fdf6e8;border-left:3px solid #c97a10}details{border:1px solid #ddd;border-radius:8px;padding:6px 10px;margin:10px 0}summary{color:#c97a10;font-weight:600}hr{border:0;border-top:1px dashed #ccc;margin:28px 0}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{size:auto;margin:0}@media print{body{padding:12mm 10mm;max-width:none}tr,img,blockquote{break-inside:avoid}}';
+async function buildHtml(secs,title){
+ const box=document.createElement('div');box.innerHTML=secs.map(x=>(secs.length===1&&x.t===title?'':`<h2>${esc(x.t)}</h2>`)+x.h).join('<hr>');
+ box.querySelectorAll('details').forEach(d=>d.setAttribute('open',''));await inlineImgs(box);
+ return `<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${EXCSS}</style></head><body><h1>${esc(title)}</h1>${box.innerHTML}</body></html>`}
 async function exportFile(secs,title){
  const n=secs.reduce((a,x)=>a+(x.h.match(/data-img=/g)||[]).length,0);
  if(n>40&&!confirm(`这一章有 ${n} 张截图，导出的文件会比较大，继续？`))return;
  toast('正在生成文件…');
- const box=document.createElement('div');box.innerHTML=secs.map(x=>`<h2>${esc(x.t)}</h2>${x.h}`).join('<hr>');
- box.querySelectorAll('details').forEach(d=>d.setAttribute('open',''));await inlineImgs(box);
- const css='body{font:16px/1.75 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;max-width:860px;margin:0 auto;padding:16px;color:#1d2430}h1{font-size:22px}h2{font-size:19px;margin-top:28px}h4{margin:18px 0 6px;padding:5px 10px;border-left:3px solid #1f5fae;background:#f3f5f8}img{max-width:100%;height:auto;border:1px solid #ddd;border-radius:6px;margin:8px 0}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:6px;font-size:14px}blockquote{margin:10px 0;padding:8px 12px;background:#fdf6e8;border-left:3px solid #c97a10}details{border:1px solid #ddd;border-radius:8px;padding:6px 10px;margin:10px 0}summary{color:#c97a10;font-weight:600}hr{border:0;border-top:1px dashed #ccc;margin:28px 0}.foot{color:#888;font-size:12px;margin-top:30px}';
- const html=`<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${css}</style></head><body><h1>${esc(title)}</h1>${box.innerHTML}</body></html>`;
+ const html=await buildHtml(secs,title);
  const file=new File([html],title.replace(/[\\/:*?"<>|]/g,'_')+'.html',{type:'text/html'});
  try{if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title});return}}catch(e){if(e.name==='AbortError')return}
  const a=document.createElement('a');a.href=URL.createObjectURL(file);a.download=file.name;a.click();toast('已导出文件')}
-async function printNow(){toast('正在准备打印…');const d=$('#doc');d.querySelectorAll('details').forEach(x=>x.open=true);
- await Promise.all([...d.querySelectorAll('img[data-img]')].map(im=>{const v=DATA.imgs[im.dataset.img]||'';return v[0]==='@'?lazyImg(v.slice(1)).then(u=>{im.src=u}).catch(()=>{}):Promise.resolve()}));
- setTimeout(()=>window.print(),300)}
+function printNow(secs,title){
+ // 在空白新窗口里打印：页眉页脚里不会出现知识库网址
+ let w=null;try{w=window.open('','_blank')}catch(e){}
+ toast('正在准备 PDF…');
+ buildHtml(secs,title).then(html=>{
+  if(w&&!w.closed){w.document.open();w.document.write(html);w.document.close();
+   const go=()=>{try{w.focus();w.print()}catch(e){}};
+   const ims=[...w.document.images];Promise.all(ims.map(i=>i.complete?1:new Promise(r=>{i.onload=i.onerror=r}))).then(()=>setTimeout(go,300));return}
+  // 弹窗被拦截：退回本页打印
+  const d=$('#doc');d.querySelectorAll('details').forEach(x=>x.open=true);
+  Promise.all([...d.querySelectorAll('img[data-img]')].map(im=>{const v=DATA.imgs[im.dataset.img]||'';return v[0]==='@'?lazyImg(v.slice(1)).then(u=>{im.src=u}).catch(()=>{}):Promise.resolve()})).then(()=>setTimeout(()=>window.print(),300))})}
 // ---------- 批注与收藏 ----------
 function marksView(){
  setTop('批注与收藏');const ns=Object.entries(S.notes).map(([k,n])=>[byKey(k),n]).filter(x=>x[0]),st=Object.keys(S.star).map(byKey).filter(Boolean);
