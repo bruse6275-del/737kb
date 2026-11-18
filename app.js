@@ -103,7 +103,7 @@ function secView(s,hl){
   syncPush(st=>{if(h===s.h0)delete st.edit[s.sid];else st.edit[s.sid]=h},'修改：'+s.t).then(ok=>{if(ok){toast('已保存，所有设备同步');secView(s);renderNav()}else{$('#eSave').disabled=false;$('#eSave').textContent='保存'}})};
  $('#bExp').onclick=()=>{const b=$('#expbar');b.style.display=b.style.display==='none'?'flex':'none'};
  $$('#expbar [data-ex]').forEach(b=>b.onclick=()=>{const k=b.dataset.ex;$('#expbar').style.display='none';if(k==='x')return;
-  if(k==='copy'){const t=s.t+'\n\n'+$('#doc').innerText.replace(/\n{3,}/g,'\n\n')+'\n\n——摘自 737 飞行知识库';(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast('已复制，可以粘贴到微信'),()=>{const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove();toast('已复制')});return}
+  if(k==='copy'){const t=s.t+'\n\n'+$('#doc').innerText.replace(/\n{3,}/g,'\n\n');(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast('已复制，可以粘贴到微信'),()=>{const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove();toast('已复制')});return}
   if(k==='pdf'){printNow();return}
   exportFile(k==='sec'?[s]:live(s.ch.secs),k==='sec'?s.t:s.ch.t)});
  $('#bDel').onclick=()=>{const b=$('#delbar');b.style.display=b.style.display==='none'?'flex':'none'};
@@ -229,7 +229,7 @@ async function exportFile(secs,title){
  const box=document.createElement('div');box.innerHTML=secs.map(x=>`<h2>${esc(x.t)}</h2>${x.h}`).join('<hr>');
  box.querySelectorAll('details').forEach(d=>d.setAttribute('open',''));await inlineImgs(box);
  const css='body{font:16px/1.75 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;max-width:860px;margin:0 auto;padding:16px;color:#1d2430}h1{font-size:22px}h2{font-size:19px;margin-top:28px}h4{margin:18px 0 6px;padding:5px 10px;border-left:3px solid #1f5fae;background:#f3f5f8}img{max-width:100%;height:auto;border:1px solid #ddd;border-radius:6px;margin:8px 0}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:6px;font-size:14px}blockquote{margin:10px 0;padding:8px 12px;background:#fdf6e8;border-left:3px solid #c97a10}details{border:1px solid #ddd;border-radius:8px;padding:6px 10px;margin:10px 0}summary{color:#c97a10;font-weight:600}hr{border:0;border-top:1px dashed #ccc;margin:28px 0}.foot{color:#888;font-size:12px;margin-top:30px}';
- const html=`<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${css}</style></head><body><h1>${esc(title)}</h1>${box.innerHTML}<p class="foot">摘自 737 飞行知识库 · 导出于 ${new Date().toLocaleDateString()}</p></body></html>`;
+ const html=`<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${css}</style></head><body><h1>${esc(title)}</h1>${box.innerHTML}</body></html>`;
  const file=new File([html],title.replace(/[\\/:*?"<>|]/g,'_')+'.html',{type:'text/html'});
  try{if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title});return}}catch(e){if(e.name==='AbortError')return}
  const a=document.createElement('a');a.href=URL.createObjectURL(file);a.download=file.name;a.click();toast('已导出文件')}
