@@ -19,19 +19,20 @@ const b64e=u8=>{let s='';for(let i=0;i<u8.length;i+=8192)s+=String.fromCharCode.
 const b64d=t=>Uint8Array.from(atob(t.replace(/\s/g,'')),c=>c.charCodeAt(0));
 async function encS(o){const iv=crypto.getRandomValues(new Uint8Array(12));const ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},window.__kbkey,new TextEncoder().encode(JSON.stringify(o))));const a=new Uint8Array(12+ct.length);a.set(iv);a.set(ct,12);return b64e(a)}
 async function decS(t){const b=b64d(t);return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:b.subarray(0,12)},window.__kbkey,b.subarray(12))))}
+function tfetch(u,o,ms){const c=new AbortController();const t=setTimeout(()=>c.abort(),ms||15000);return fetch(u,Object.assign({},o||{},{signal:c.signal})).finally(()=>clearTimeout(t))}
 async function pagesGet(){const r=await fetch('sync.enc?x='+Date.now(),{cache:'no-store'});if(r.status===404)return{st:{edit:{},del:{}},sha:null};if(!r.ok)throw new Error('读取同步失败 '+r.status);
  const b=new Uint8Array(await r.arrayBuffer());return{st:JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:b.subarray(0,12)},window.__kbkey,b.subarray(12)))),sha:null}}
 async function ghGet(){const h={Accept:'application/vnd.github+json'};const t=ghTok();if(t)h.Authorization='Bearer '+t;
- const r=await fetch(`https://api.github.com/repos/${REPO}/contents/sync.enc?ref=main&x=${Date.now()}`,{headers:h,cache:'no-store'});
+ const r=await tfetch(`https://api.github.com/repos/${REPO}/contents/sync.enc?ref=main&x=${Date.now()}`,{headers:h,cache:'no-store'},15000);
  if(r.status===404)return{st:{edit:{},del:{}},sha:null};if(!r.ok)throw new Error('读取同步失败 '+r.status);
  const j=await r.json();return{st:await decS(j.content),sha:j.sha}}
 async function syncPull(quiet){try{let st;if(ghTok()){try{st=(await ghGet()).st}catch(e){st=(await pagesGet()).st}}else st=(await pagesGet()).st;SY={edit:st.edit||{},del:st.del||{}};saveSY();applyEdits();if(!document.querySelector('.doc.editing'))render();if(!quiet)toast(ghTok()?'已同步':'已读取最新的修改和删除（本机未设置令牌，只能看不能改）')}catch(e){if(!quiet)toast('同步失败：'+(e.message==='Load failed'||e.message==='Failed to fetch'?'网络连不上':e.message))}}
 async function syncPush(mut,msg){const t=ghTok();if(!t){toast('先点左下「☁ 同步」设置一次');return false}
  for(let k=0;k<3;k++){try{const {st,sha}=await ghGet();st.edit=st.edit||{};st.del=st.del||{};mut(st);
   const body={message:msg||'知识库修改',content:await encS(st),branch:'main'};if(sha)body.sha=sha;
-  const r=await fetch(`https://api.github.com/repos/${REPO}/contents/sync.enc`,{method:'PUT',headers:{Authorization:'Bearer '+t,Accept:'application/vnd.github+json','Content-Type':'application/json'},body:JSON.stringify(body)});
+  const r=await tfetch(`https://api.github.com/repos/${REPO}/contents/sync.enc`,{method:'PUT',headers:{Authorization:'Bearer '+t,Accept:'application/vnd.github+json','Content-Type':'application/json'},body:JSON.stringify(body)},25000);
   if(r.status===409||r.status===422)continue;if(!r.ok)throw new Error(r.status===401||r.status===403?'令牌无效或没有写权限':'HTTP '+r.status);
-  SY={edit:st.edit,del:st.del};saveSY();applyEdits();return true}catch(e){toast('同步失败：'+(e.message==='Load failed'||e.message==='Failed to fetch'?'连不上 GitHub，换个网络再试':e.message));return false}}
+  SY={edit:st.edit,del:st.del};saveSY();applyEdits();return true}catch(e){toast('同步失败：'+(e.name==='AbortError'?'连 GitHub 超时（手机流量常连不上），换 Wi-Fi 再点保存，改动还在':(e.message==='Load failed'||e.message==='Failed to fetch'?'连不上 GitHub，换个网络再试，改动还在':e.message)));return false}}
  toast('同步冲突，请重试');return false}
 const goneOf=s=>!!(SY.del[s.sid]||SY.del['ch:'+s.ch.tp.t+'/'+s.ch.t]||SY.del['tp:'+s.ch.tp.t]);
 function applyEdits(){SECS.forEach(s=>{s.h=SY.edit[s.sid]||s.h0;s.ed=!!SY.edit[s.sid];s.gone=goneOf(s);s.txt=s.h.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ')})}
@@ -99,7 +100,7 @@ function secView(s,hl){
  $('#bEdit').onclick=()=>{const d=$('#doc');d.contentEditable='true';d.classList.add('editing');$('#edbar').style.display='flex';$('#bEdit').disabled=true;d.querySelectorAll('details').forEach(x=>x.open=true);d.focus()};
  $('#eCancel').onclick=()=>secView(s);
  $('#eSave').onclick=()=>{const d=$('#doc').cloneNode(true);d.querySelectorAll('img[data-img]').forEach(im=>{im.removeAttribute('src');im.removeAttribute('data-ld');im.removeAttribute('style')});const h=d.innerHTML.trim();
-  $('#eSave').disabled=true;$('#eSave').textContent='保存中…';
+  $('#eSave').disabled=true;$('#eSave').textContent='保存中…（最多约 40 秒）';
   syncPush(st=>{if(h===s.h0)delete st.edit[s.sid];else st.edit[s.sid]=h},'修改：'+s.t).then(ok=>{if(ok){toast('已保存，所有设备同步');secView(s);renderNav()}else{$('#eSave').disabled=false;$('#eSave').textContent='保存'}})};
  $('#bExp').onclick=()=>{const b=$('#expbar');b.style.display=b.style.display==='none'?'flex':'none'};
  $$('#expbar [data-ex]').forEach(b=>b.onclick=()=>{const k=b.dataset.ex;$('#expbar').style.display='none';if(k==='x')return;
